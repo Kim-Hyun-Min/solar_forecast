@@ -104,3 +104,45 @@ numpy>=1.23.0
 matplotlib>=3.7.0
 추후 라이브러리가 늘면 이 파일만 업데이트하면 됩니다.
 (현재 스크립트에서 사용하는 외부 패키지 기준: requests, pandas, numpy, matplotlib, .env 로딩용 python-dotenv)
+
+
+## 머신러닝 (ML) — gen_full_kwh 기반 예측
+
+### 1) 학습 데이터 준비
+수집된 기상 CSV(`sky_30day.csv` 등)를 바탕으로 kWh·SOC를 계산해 학습용 데이터셋을 생성합니다.
+
+```bash
+python ML/make_period_power_soc.py --csv ./data/sky_30day.csv --start 2025-07-22 --end 2025-08-20 --out ./data/pv_20250722_20250820_features.csv
+출력 CSV 컬럼:
+
+dt_kst, SKY, TMP, REH, WSD, PCP, PTY
+
+pv_full_kw, pv_clear_kw (전력 kW)
+
+gen_full_kwh, gen_clear_kwh (에너지 kWh)
+
+soc (배터리 축전량, 단순 모델)
+
+2) 모델 학습
+gen_full_kwh(구간별 에너지)를 타깃으로 XGBoost 모델을 학습합니다.
+
+bash
+복사
+편집
+python ML/train_distill.py --feat_csv ./data/pv_20250722_20250820_features.csv --target gen_full_kwh --model_out ./data/distill_xgb.json
+출력: distill_xgb.json (모델), distill_xgb.json.feat (피처 목록)
+
+교차검증 MAE 로그 확인 가능 (예: MAE ≈ 0.04 kWh)
+
+3) 최근 6시간 예보 예측
+API 호출로 가장 최근 발표 슬롯의 +1~+6h 예보를 수집하고, 학습된 모델로 에너지를 예측합니다.
+
+bash
+복사
+편집
+python ML/predict_recent6.py --model ./data/distill_xgb.json --features ./data/distill_xgb.json.feat --out ./data/pred_recent6.csv
+출력: pred_recent6.csv
+
+dt_kst, SKY, TMP, REH, WSD, PCP, PTY
+
+pred_gen_kwh (예측 에너지)
